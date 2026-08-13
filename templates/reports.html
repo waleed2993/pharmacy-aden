@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}التقارير - نظام الصيدلية{% endblock %}
+{% block body %}
+<div class="app-layout">
+    {% include "_sidebar.html" %}
+    <div class="main-content">
+        <div class="top-bar">
+            <h1><i class="fas fa-chart-bar"></i> التقارير / Reports</h1>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📅 فلترة التقارير</span>
+            </div>
+            <form method="GET" action="{{ url_for('reports') }}" class="search-bar">
+                <input type="date" name="date_from" class="form-control" value="{{ date_from }}">
+                <input type="date" name="date_to" class="form-control" value="{{ date_to }}">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> فلترة</button>
+                <a href="{{ url_for('reports') }}" class="btn btn-secondary"><i class="fas fa-sync"></i> الكل</a>
+                <a href="{{ url_for('reports_export') }}?date_from={{ date_from }}&date_to={{ date_to }}" class="btn btn-success"><i class="fas fa-file-excel"></i> تصدير Excel</a>
+                <a href="{{ url_for('backup') }}" class="btn btn-warning"><i class="fas fa-database"></i> نسخة احتياطية</a>
+            </form>
+        </div>
+
+        <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr);">
+            <div class="stat-card">
+                <div class="stat-icon blue"><i class="fas fa-coins"></i></div>
+                <div class="stat-info">
+                    <h3>{{ "%.2f"|format(sales) }} {{ currency }}</h3>
+                    <p>إجمالي المبيعات</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green"><i class="fas fa-hand-holding-usd"></i></div>
+                <div class="stat-info">
+                    <h3>{{ "%.2f"|format(profit) }} {{ currency }}</h3>
+                    <p>صافي الأرباح</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup & Restore Section -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-database"></i> النسخ الاحتياطية واستعادة البيانات</span>
+                <div style="display:flex; gap:8px;">
+                    <form method="POST" action="{{ url_for('backup') }}" style="display:inline;">
+                        <button type="submit" class="btn btn-warning"><i class="fas fa-save"></i> نسخة جديدة</button>
+                    </form>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>الاسم</th><th>التاريخ</th><th>الحجم (MB)</th><th>النوع</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for b in backups %}
+                        <tr>
+                            <td><strong>{{ b.name }}</strong></td>
+                            <td>{{ b.date }}</td>
+                            <td>{{ b.size_mb }}</td>
+                            <td>
+                                {% if 'manual' in b.name %}<span class="badge badge-info">يدوي</span>
+                                {% elif 'auto' in b.name %}<span class="badge badge-success">تلقائي</span>
+                                {% else %}<span class="badge badge-secondary">أخرى</span>{% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('backup_download', filename=b.name) }}" class="btn btn-sm btn-success"><i class="fas fa-download"></i></a>
+                                <form method="POST" action="{{ url_for('backup_restore') }}" style="display:inline;" onsubmit="return confirm('⚠️ سيتم استبدال قاعدة البيانات الحالية! هل أنت متأكد؟');">
+                                    <input type="hidden" name="filename" value="{{ b.name }}">
+                                    <button type="submit" class="btn btn-sm btn-warning"><i class="fas fa-undo"></i> استعادة</button>
+                                </form>
+                                <form method="POST" action="{{ url_for('backup_delete') }}" style="display:inline;" onsubmit="return confirm('هل تريد حذف هذه النسخة؟');">
+                                    <input type="hidden" name="filename" value="{{ b.name }}">
+                                    <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" style="text-align:center; color: var(--text-muted);">لا توجد نسخ احتياطية</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📋 الفواتير</span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>#</th><th>رقم الفاتورة</th><th>التاريخ</th><th>الإجمالي</th><th>المستخدم</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for inv in invoices %}
+                        <tr>
+                            <td>{{ inv.id }}</td>
+                            <td><strong>{{ inv.invoice_number }}</strong></td>
+                            <td>{{ inv.invoice_date[:19] }}</td>
+                            <td>{{ "%.2f"|format(inv.total_amount) }} {{ currency }}</td>
+                            <td>{{ inv.created_by }}</td>
+                            <td>
+                                <button onclick="showInvoiceDetails({{ inv.id }})" class="btn btn-sm btn-info"><i class="fas fa-eye"></i></button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" style="text-align:center; color: var(--text-muted);">لا توجد فواتير</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showInvoiceDetails(id) {
+    fetch('/api/invoice_details?id=' + id)
+        .then(r => r.json())
+        .then(data => {
+            let txt = `فاتورة: ${data.invoice.invoice_number}
+التاريخ: ${data.invoice.invoice_date}
+الإجمالي: ${parseFloat(data.invoice.total_amount).toFixed(2)}
+الأصناف:
+`;
+            data.lines.forEach(l => {
+                txt += `- ${l.name} | الكمية: ${l.qty} | السعر: ${parseFloat(l.unit_price).toFixed(2)}
+`;
+            });
+            alert(txt);
+        });
+}
+</script>
+{% endblock %}

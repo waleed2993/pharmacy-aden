@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}لوحة التحكم - نظام الصيدلية{% endblock %}
+{% block body %}
+<div class="app-layout">
+    {% include "_sidebar.html" %}
+    <div class="main-content">
+        <div class="top-bar">
+            <h1><i class="fas fa-tachometer-alt"></i> لوحة التحكم</h1>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <span style="font-size:0.85rem; color:var(--text-muted);">
+                    {% if sync_status.enabled %}
+                        <i class="fas fa-cloud" style="color:var(--success);"></i> 
+                        {% if sync_status.last_sync %}آخر مزامنة: {{ sync_status.last_sync[:16] }}{% else %}جاري الاتصال...{% endif %}
+                    {% else %}
+                        <i class="fas fa-cloud-slash" style="color:var(--text-muted);"></i> وضع محلي
+                    {% endif %}
+                </span>
+                <span style="color: var(--text-muted);">{{ now }}</span>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% if session.role == 'admin' %}
+        <div class="card" style="background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); color: white;">
+            <div class="card-header" style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                <span class="card-title" style="color: white;"><i class="fas fa-sync-alt"></i> حالة المزامنة السحابية</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                <div>
+                    <p style="font-size: 1.1rem; margin-bottom: 4px;">
+                        {% if sync_status.enabled %}
+                            <i class="fas fa-check-circle" style="color: #86efac;"></i> المزامنة مفعلة
+                        {% else %}
+                            <i class="fas fa-times-circle" style="color: #fca5a5;"></i> المزامنة معطلة
+                        {% endif %}
+                    </p>
+                    <p style="font-size: 0.85rem; opacity: 0.8;">
+                        {% if sync_status.last_sync %}
+                            آخر مزامنة ناجحة: {{ sync_status.last_sync[:19] }}
+                        {% else %}
+                            لم تتم المزامنة بعد
+                        {% endif %}
+                        | الفاصل: كل {{ sync_status.interval_minutes }} دقيقة
+                    </p>
+                </div>
+                <form method="POST" action="{{ url_for('sync_now') }}" style="margin-right: auto;">
+                    <button type="submit" class="btn" style="background: white; color: #115e59; font-weight: bold;">
+                        <i class="fas fa-cloud-upload-alt"></i> مزامنة الآن
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon teal"><i class="fas fa-pills"></i></div>
+                <div class="stat-info"><h3>{{ stats.medicines }}</h3><p>إجمالي الأدوية</p></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon blue"><i class="fas fa-file-invoice-dollar"></i></div>
+                <div class="stat-info"><h3>{{ stats.invoices }}</h3><p>إجمالي الفواتير</p></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green"><i class="fas fa-money-bill-wave"></i></div>
+                <div class="stat-info"><h3>{{ "%.2f"|format(stats.sales) }} {{ currency }}</h3><p>إجمالي المبيعات</p></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon orange"><i class="fas fa-chart-line"></i></div>
+                <div class="stat-info"><h3>{{ "%.2f"|format(stats.profit) }} {{ currency }}</h3><p>صافي الأرباح</p></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon red"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="stat-info"><h3>{{ stats.low_stock + stats.expired }}</h3><p>التنبيهات النشطة</p></div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card" style="background: #f0f9ff; border: 1px solid #bae6fd;">
+            <div class="card-header">
+                <span class="card-title" style="color: #0369a1;"><i class="fas fa-bolt"></i> إجراءات سريعة</span>
+            </div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <form method="POST" action="{{ url_for('backup') }}" style="display:inline;">
+                    <button type="submit" class="btn btn-warning"><i class="fas fa-database"></i> نسخ احتياطي سريع</button>
+                </form>
+                <a href="{{ url_for('reports') }}" class="btn btn-secondary"><i class="fas fa-history"></i> إدارة النسخ والاستعادة</a>
+                <a href="{{ url_for('stock') }}" class="btn btn-info"><i class="fas fa-boxes"></i> المخزن</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-clock"></i> آخر الفواتير</span>
+                <a href="{{ url_for('reports') }}" class="btn btn-sm btn-secondary">عرض الكل</a>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead><tr><th>رقم الفاتورة</th><th>التاريخ</th><th>الإجمالي</th><th>المستخدم</th></tr></thead>
+                    <tbody>
+                        {% for inv in recent_invoices %}
+                        <tr>
+                            <td><strong>{{ inv.invoice_number }}</strong></td>
+                            <td>{{ inv.invoice_date[:19] }}</td>
+                            <td>{{ "%.2f"|format(inv.total_amount) }} {{ currency }}</td>
+                            <td>{{ inv.created_by }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" style="text-align:center; color: var(--text-muted);">لا توجد فواتير</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

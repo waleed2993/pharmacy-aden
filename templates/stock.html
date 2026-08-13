@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}المخزن - نظام الصيدلية{% endblock %}
+{% block body %}
+<div class="app-layout">
+    {% include "_sidebar.html" %}
+    <div class="main-content">
+        <div class="top-bar">
+            <h1><i class="fas fa-boxes"></i> المخزن / Stock</h1>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">{% if edit_mode %}✏️ تعديل دواء{% else %}➕ إضافة دواء جديد{% endif %}</span>
+            </div>
+            <form method="POST" action="{{ url_for('stock') }}">
+                <input type="hidden" name="edit_id" value="{{ edit_id or '' }}">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>الباركود *</label>
+                        <input type="text" name="barcode" class="form-control" value="{{ form.barcode or '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>اسم الدواء *</label>
+                        <input type="text" name="name" class="form-control" value="{{ form.name or '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>الاسم العلمي</label>
+                        <input type="text" name="scientific_name" class="form-control" value="{{ form.scientific_name or '' }}">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>الكمية</label>
+                        <input type="number" name="quantity" class="form-control" value="{{ form.quantity or 0 }}" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>الحد الأدنى</label>
+                        <input type="number" name="min_limit" class="form-control" value="{{ form.min_limit or 0 }}" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>تاريخ الانتهاء (YYYY-MM-DD)</label>
+                        <input type="date" name="expiry_date" class="form-control" value="{{ form.expiry_date or '' }}">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>سعر الشراء</label>
+                        <input type="number" step="0.01" name="purchase_price" class="form-control" value="{{ form.purchase_price or 0 }}" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>سعر البيع</label>
+                        <input type="number" step="0.01" name="selling_price" class="form-control" value="{{ form.selling_price or 0 }}" min="0">
+                    </div>
+                    <div class="form-group" style="display:flex; align-items:flex-end; gap:8px;">
+                        <button type="submit" class="btn btn-primary" style="width:auto; padding: 12px 30px;">
+                            <i class="fas fa-save"></i> {% if edit_mode %}تحديث{% else %}حفظ{% endif %}
+                        </button>
+                        {% if edit_mode %}
+                        <a href="{{ url_for('stock') }}" class="btn btn-secondary" style="width:auto;">إلغاء</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📋 قائمة الأدوية</span>
+                <form method="GET" action="{{ url_for('stock') }}" class="search-bar" style="margin-bottom:0;">
+                    <input type="text" name="q" class="form-control" placeholder="بحث..." value="{{ search_q or '' }}">
+                    <button type="submit" class="btn btn-secondary"><i class="fas fa-search"></i></button>
+                    <a href="{{ url_for('stock') }}" class="btn btn-secondary"><i class="fas fa-sync"></i></a>
+                    <form method="POST" action="{{ url_for('stock_backup') }}" style="display:inline;">
+                        <button type="submit" class="btn btn-warning"><i class="fas fa-database"></i> نسخ احتياطي</button>
+                    </form>
+                </form>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>الباركود</th><th>الاسم</th><th>الاسم العلمي</th>
+                            <th>الكمية</th><th>الحالة</th><th>الصلاحية</th><th>السعر</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in medicines %}
+                        <tr>
+                            <td>{{ m.id }}</td>
+                            <td>{{ m.barcode or '-' }}</td>
+                            <td><strong>{{ m.name }}</strong></td>
+                            <td>{{ m.scientific_name or 'غير محدد' }}</td>
+                            <td style="text-align:center;">{{ m.quantity }}</td>
+                            <td style="text-align:center;">
+                                {% if m.quantity <= 0 %}
+                                    <span class="badge badge-danger">❌ نفذ</span>
+                                {% elif m.quantity <= m.min_limit and m.min_limit > 0 %}
+                                    <span class="badge badge-warning">⚠️ منخفض</span>
+                                {% else %}
+                                    <span class="badge badge-success">✅ OK</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align:center;">
+                                {% if m.expiry_date %}
+                                    {% set exp = m.expiry_date %}
+                                    {% if exp < today %}
+                                        <span style="color:var(--danger); font-weight:bold;">🔴 {{ exp }}</span>
+                                    {% elif exp <= near_expiry_date %}
+                                        <span style="color:var(--warning);">🟡 {{ exp }}</span>
+                                    {% else %}
+                                        <span style="color:var(--success);">🟢 {{ exp }}</span>
+                                    {% endif %}
+                                {% else %}-{% endif %}
+                            </td>
+                            <td>{{ "%.2f"|format(m.selling_price) }} {{ currency_symbol }}</td>
+                            <td>
+                                <a href="{{ url_for('stock_edit', id=m.id) }}" class="btn btn-sm btn-info"><i class="fas fa-edit"></i></a>
+                                <a href="{{ url_for('stock_delete', id=m.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('هل أنت متأكد من الحذف؟')"><i class="fas fa-trash"></i></a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="9" style="text-align:center; color: var(--text-muted);">لا توجد أدوية</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% block title %}نقطة البيع - نظام الصيدلية{% endblock %}
+{% block body %}
+<div class="app-layout">
+    {% include "_sidebar.html" %}
+    <div class="main-content">
+        <div class="top-bar">
+            <h1><i class="fas fa-cash-register"></i> نقطة البيع / POS</h1>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="pos-grid">
+            <div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🔍 البحث عن دواء</span>
+                    </div>
+                    <div class="search-bar">
+                        <input type="text" id="searchInput" class="form-control" placeholder="ابحث بالاسم أو الباركود أو الاسم العلمي..." autocomplete="off">
+                        <input type="text" id="barcodeInput" class="form-control" placeholder="📷 باركود (Enter)" style="max-width: 180px;">
+                    </div>
+                    <div id="searchResults" class="search-results" style="display:none;"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📋 أصناف الفاتورة</span>
+                        <button onclick="clearCart()" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> مسح</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>الباركود</th>
+                                    <th>الاسم</th>
+                                    <th>الكمية</th>
+                                    <th>السعر</th>
+                                    <th>الإجمالي</th>
+                                    <th>الإرشادات</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="cartTable"></tbody>
+                        </table>
+                    </div>
+                    <p id="emptyCartMsg" style="text-align:center; color: var(--text-muted); padding: 20px;">الفاتورة فارغة</p>
+                </div>
+            </div>
+
+            <div class="pos-cart">
+                <h3><i class="fas fa-receipt"></i> الفاتورة</h3>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label style="font-size: 0.85rem;">المريض (اختياري)</label>
+                    <select id="patientSelect" class="form-control">
+                        <option value="">لا يوجد مريض (بيع مباشر)</option>
+                        {% for p in patients %}
+                        <option value="{{ p.id }}">{{ p.id }} - {{ p.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label style="font-size: 0.85rem;">الطبيب (اختياري)</label>
+                    <select id="doctorSelect" class="form-control">
+                        <option value="">لا يوجد طبيب</option>
+                        {% for d in doctors %}
+                        <option value="{{ d.id }}">{{ d.id }} - {{ d.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem;">خصم الفاتورة</label>
+                    <input type="number" id="discountInput" class="form-control" value="0" min="0" step="0.01">
+                </div>
+
+                <div class="cart-total">
+                    <div class="cart-total-row">
+                        <span>المجموع:</span>
+                        <span id="subtotalDisplay">0.00 {{ currency_symbol }}</span>
+                    </div>
+                    <div class="cart-total-row">
+                        <span>الخصم:</span>
+                        <span id="discountDisplay">0.00 {{ currency_symbol }}</span>
+                    </div>
+                    <div class="cart-total-row grand">
+                        <span>الصافي:</span>
+                        <span id="totalDisplay">0.00 {{ currency_symbol }}</span>
+                    </div>
+                </div>
+
+                <button onclick="checkout()" class="btn btn-primary" style="margin-top: 16px; width: 100%; padding: 14px; font-size: 1.1rem;">
+                    <i class="fas fa-check-circle"></i> إتمام البيع
+                </button>
+
+                <button onclick="printPreview()" class="btn btn-secondary" style="margin-top: 8px; width: 100%;">
+                    <i class="fas fa-print"></i> معاينة الطباعة
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let cart = [];
+let searchTimeout;
+
+function formatMoney(n) {
+    return parseFloat(n).toFixed(2) + ' {{ currency_symbol }}';
+}
+
+function renderCart() {
+    const tbody = document.getElementById('cartTable');
+    const emptyMsg = document.getElementById('emptyCartMsg');
+    tbody.innerHTML = '';
+
+    if (cart.length === 0) {
+        emptyMsg.style.display = 'block';
+        updateTotals();
+        return;
+    }
+    emptyMsg.style.display = 'none';
+
+    let subtotal = 0;
+    cart.forEach((item, idx) => {
+        subtotal += item.line_total;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${idx + 1}</td>
+            <td>${item.barcode}</td>
+            <td><strong>${item.name}</strong></td>
+            <td>
+                <input type="number" value="${item.qty}" min="1" max="${item.max_qty + item.qty}" 
+                    onchange="updateQty(${idx}, this.value)" style="width: 60px; padding: 4px; border-radius: 6px; border: 1px solid var(--border);">
+            </td>
+            <td>${formatMoney(item.unit_price)}</td>
+            <td><strong>${formatMoney(item.line_total)}</strong></td>
+            <td><input type="text" value="${item.dosage_instruction || ''}" onchange="updateDosage(${idx}, this.value)" style="width: 100%; padding: 4px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.8rem;"></td>
+            <td><button onclick="removeItem(${idx})" class="btn btn-sm btn-danger"><i class="fas fa-times"></i></button></td>
+        `;
+        tbody.appendChild(tr);
+    });
+    updateTotals();
+}
+
+function updateTotals() {
+    let subtotal = cart.reduce((s, i) => s + i.line_total, 0);
+    let discount = parseFloat(document.getElementById('discountInput').value) || 0;
+    let total = Math.max(0, subtotal - discount);
+    document.getElementById('subtotalDisplay').textContent = formatMoney(subtotal);
+    document.getElementById('discountDisplay').textContent = formatMoney(discount);
+    document.getElementById('totalDisplay').textContent = formatMoney(total);
+}
+
+document.getElementById('discountInput').addEventListener('input', updateTotals);
+
+function updateQty(idx, val) {
+    let q = parseInt(val);
+    if (!q || q < 1) return;
+    let item = cart[idx];
+    let available = item.max_qty + item.qty;
+    if (q > available) {
+        alert('الكمية المطلوبة غير متاحة (المتاح: ' + available + ')');
+        renderCart();
+        return;
+    }
+    item.qty = q;
+    item.line_total = q * item.unit_price;
+    renderCart();
+}
+
+function updateDosage(idx, val) {
+    cart[idx].dosage_instruction = val;
+}
+
+function removeItem(idx) {
+    cart.splice(idx, 1);
+    renderCart();
+}
+
+function clearCart() {
+    if (!cart.length) return;
+    if (!confirm('مسح الفاتورة الحالية؟')) return;
+    cart = [];
+    document.getElementById('discountInput').value = 0;
+    renderCart();
+}
+
+// Search
+document.getElementById('searchInput').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    let q = this.value.trim();
+    if (!q) {
+        document.getElementById('searchResults').style.display = 'none';
+        return;
+    }
+    searchTimeout = setTimeout(() => searchMedicines(q), 300);
+});
+
+document.getElementById('barcodeInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        let code = this.value.trim();
+        if (!code) return;
+        fetch('/api/medicine_by_barcode?barcode=' + encodeURIComponent(code))
+            .then(r => r.json())
+            .then(data => {
+                if (data.found) {
+                    addToCart(data.medicine);
+                    this.value = '';
+                } else {
+                    alert('الباركود غير مسجل');
+                }
+            });
+    }
+});
+
+function searchMedicines(q) {
+    fetch('/api/search_medicines?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(data => {
+            const box = document.getElementById('searchResults');
+            if (!data.length) { box.style.display = 'none'; return; }
+            box.innerHTML = '';
+            data.forEach(med => {
+                let div = document.createElement('div');
+                div.className = 'search-result-item';
+                let status = med.quantity <= 0 ? '<span class="badge badge-danger">نفذ</span>' : 
+                             med.quantity <= med.min_limit ? '<span class="badge badge-warning">منخفض</span>' : 
+                             '<span class="badge badge-success">متوفر</span>';
+                div.innerHTML = `
+                    <div>
+                        <div class="result-name">${med.name} ${status}</div>
+                        <div class="result-meta">${med.scientific_name || 'غير محدد'} | ${med.barcode || 'لا يوجد'}</div>
+                    </div>
+                    <div class="result-stock">${med.quantity} | ${parseFloat(med.selling_price).toFixed(2)} {{ currency_symbol }}</div>
+                `;
+                div.onclick = () => { addToCart(med); box.style.display = 'none'; document.getElementById('searchInput').value = ''; };
+                box.appendChild(div);
+            });
+            box.style.display = 'block';
+        });
+}
+
+function addToCart(med) {
+    if (med.quantity <= 0) {
+        if (!confirm('هذا الدواء منتهي من المخزون! هل تريد الاستمرار؟')) return;
+    }
+    if (med.expiry_date) {
+        let exp = new Date(med.expiry_date);
+        let today = new Date();
+        let diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
+        if (exp < today) {
+            if (!confirm('هذا الدواء منتهي الصلاحية! هل تريد الاستمرار؟')) return;
+        } else if (diffDays <= 30) {
+            alert('تحذير: هذا الدواء قارب على الانتهاء (تاريخ: ' + med.expiry_date + ')');
+        }
+    }
+
+    let existing = cart.find(x => x.medicine_id == med.id);
+    if (existing) {
+        if (existing.qty + 1 > med.quantity) {
+            alert('الكمية غير كافية'); return;
+        }
+        existing.qty += 1;
+        existing.line_total = existing.qty * existing.unit_price;
+    } else {
+        let dosage = prompt('وصف استخدام العلاج (اختياري):') || 'حسب الإرشادات';
+        cart.push({
+            medicine_id: med.id,
+            barcode: med.barcode || '',
+            name: med.name,
+            qty: 1,
+            unit_price: parseFloat(med.selling_price) || 0,
+            line_total: parseFloat(med.selling_price) || 0,
+            dosage_instruction: dosage,
+            max_qty: med.quantity
+        });
+    }
+    renderCart();
+}
+
+function checkout() {
+    if (cart.length === 0) { alert('الفاتورة فارغة'); return; }
+    if (!confirm('تأكيد إتمام البيع؟')) return;
+
+    let payload = {
+        items: cart,
+        patient_id: document.getElementById('patientSelect').value || null,
+        doctor_id: document.getElementById('doctorSelect').value || null,
+        discount: parseFloat(document.getElementById('discountInput').value) || 0
+    };
+
+    fetch('/api/checkout', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('تم البيع بنجاح! رقم الفاتورة: ' + data.invoice_number);
+            cart = [];
+            document.getElementById('discountInput').value = 0;
+            renderCart();
+        } else {
+            alert(data.message || 'حدث خطأ');
+        }
+    });
+}
+
+function printPreview() {
+    if (cart.length === 0) { alert('الفاتورة فارغة'); return; }
+    let payload = {
+        items: cart,
+        discount: parseFloat(document.getElementById('discountInput').value) || 0
+    };
+    fetch('/api/print_preview', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.url) window.open(data.url, '_blank');
+    });
+}
+
+renderCart();
+</script>
+{% endblock %}

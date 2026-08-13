@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}المسترجعات - نظام الصيدلية{% endblock %}
+{% block body %}
+<div class="app-layout">
+    {% include "_sidebar.html" %}
+    <div class="main-content">
+        <div class="top-bar">
+            <h1><i class="fas fa-undo-alt"></i> المسترجعات / Returns</h1>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">🔍 البحث عن فاتورة</span>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="invSearch" class="form-control" placeholder="رقم الفاتورة...">
+                <button onclick="searchInvoice()" class="btn btn-secondary"><i class="fas fa-search"></i> بحث</button>
+            </div>
+            <div id="invoicePreview" style="display:none; margin-top: 16px;">
+                <h4 style="margin-bottom: 12px; color: var(--primary);">📋 محتويات الفاتورة: <span id="previewInvNum"></span></h4>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>الباركود</th><th>الدواء</th><th>الكمية المتبقية</th><th>السعر</th><th>الإجمالي</th><th></th></tr>
+                        </thead>
+                        <tbody id="previewBody"></tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 16px; display: flex; gap: 10px;">
+                    <button onclick="fullReturn()" class="btn btn-warning"><i class="fas fa-undo"></i> استرجاع كامل</button>
+                </div>
+            </div>
+            <p id="previewEmpty" style="display:none; color: var(--text-muted); text-align:center; padding: 20px;">لا توجد أصناف متبقية في هذه الفاتورة</p>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📋 سجل المسترجعات</span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>#</th><th>رقم الإرجاع</th><th>التاريخ</th><th>الفاتورة الأصلية</th><th>المسترد</th><th>المستخدم</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in returns %}
+                        <tr>
+                            <td>{{ r.id }}</td>
+                            <td><strong>{{ r.return_number }}</strong></td>
+                            <td>{{ r.return_date[:19] if r.return_date else '-' }}</td>
+                            <td>{{ r.invoice_number or 'مستقلة' }}</td>
+                            <td>{{ "%.2f"|format(r.total_amount) }} {{ currency_symbol }}</td>
+                            <td>{{ r.created_by }}</td>
+                            <td>
+                                <button onclick="showReturnDetails({{ r.id }})" class="btn btn-sm btn-info"><i class="fas fa-eye"></i></button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" style="text-align:center; color: var(--text-muted);">لا توجد مسترجعات</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentInvoiceId = null;
+let currentLines = [];
+
+function searchInvoice() {
+    let q = document.getElementById('invSearch').value.trim();
+    if (!q) { alert('أدخل رقم الفاتورة'); return; }
+
+    fetch('/api/invoice_search?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('invoicePreview').style.display = 'none';
+            document.getElementById('previewEmpty').style.display = 'none';
+
+            if (!data.found) { 
+                alert('الفاتورة غير موجودة'); 
+                return; 
+            }
+
+            currentInvoiceId = data.invoice_id;
+            currentLines = data.lines || [];
+
+            if (currentLines.length === 0) {
+                document.getElementById('previewEmpty').style.display = 'block';
+                return;
+            }
+
+            document.getElementById('previewInvNum').textContent = q;
+            let tbody = document.getElementById('previewBody');
+            tbody.innerHTML = '';
+
+            currentLines.forEach(l => {
+                let tr = document.createElement('tr');
+                let nameEsc = (l.name || 'N/A').replace(/"/g, '&quot;');
+                tr.innerHTML = `
+                    <td>${l.barcode || 'N/A'}</td>
+                    <td><strong>${l.name || 'N/A'}</strong></td>
+                    <td style="text-align:center; font-weight:bold; color:var(--primary);">${l.remaining_qty}</td>
+                    <td>${parseFloat(l.unit_price).toFixed(2)}</td>
+                    <td>${parseFloat(l.line_total).toFixed(2)}</td>
+                    <td>
+                        <button onclick="partialReturn(${l.medicine_id}, &quot;${nameEsc}&quot;, ${l.remaining_qty}, ${parseFloat(l.unit_price)})" class="btn btn-sm btn-warning">جزئي</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('invoicePreview').style.display = 'block';
+        })
+        .catch(err => {
+            console.error(err);
+            alert('حدث خطأ في الاتصال');
+        });
+}
+
+function fullReturn() {
+    if (!currentInvoiceId) return;
+    if (!confirm('هل تريد استرجاع الفاتورة بالكامل؟')) return;
+
+    fetch('/api/return_full', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({invoice_id: currentInvoiceId})
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert(data.message);
+        if (data.success) location.reload();
+    })
+    .catch(err => {
+        console.error(err);
+        alert('حدث خطأ');
+    });
+}
+
+function partialReturn(medId, name, maxQty, unitPrice) {
+    let qty = prompt(`الدواء: ${name}
+الكمية المتبقية: ${maxQty}
+
+أدخل الكمية المرتجعة:`, 1);
+    if (!qty) return;
+    qty = parseInt(qty);
+    if (isNaN(qty) || qty < 1) { alert('كمية غير صالحة'); return; }
+    if (qty > maxQty) { alert('الكمية تتجاوز المتاح (' + maxQty + ')'); return; }
+
+    fetch('/api/return_partial', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            invoice_id: currentInvoiceId, 
+            items: [{medicine_id: medId, qty: qty, unit_price: unitPrice}]
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert(data.message);
+        if (data.success) searchInvoice();
+    })
+    .catch(err => {
+        console.error(err);
+        alert('حدث خطأ');
+    });
+}
+
+function showReturnDetails(retId) {
+    fetch('/api/return_details?id=' + retId)
+        .then(r => r.json())
+        .then(data => {
+            let txt = 'إيصال رقم: ' + retId + '
+-----------------------
+';
+            if (!data || data.length === 0) {
+                txt += 'لا توجد تفاصيل';
+            } else {
+                data.forEach(l => {
+                    txt += `- ${l.name || 'N/A'} | الكمية: ${l.qty} | السعر: ${parseFloat(l.unit_price).toFixed(2)}
+`;
+                });
+            }
+            alert(txt);
+        })
+        .catch(err => {
+            console.error(err);
+            alert('حدث خطأ');
+        });
+}
+</script>
+{% endblock %}

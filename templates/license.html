@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}تفعيل البرنامج{% endblock %}
+{% block body %}
+<div class="auth-page">
+    <div class="auth-card fade-in">
+        <div style="font-size: 3rem; margin-bottom: 12px;">🔐</div>
+        <h1>تفعيل البرنامج</h1>
+        <p class="subtitle">Activation Required</p>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <div style="background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem;">
+            {{ status_msg }}
+        </div>
+        <form method="POST" action="{{ url_for('license') }}">
+            <div class="form-group">
+                <label>أدخل كود التفعيل</label>
+                <input type="text" name="code" class="form-control" placeholder="Ko736692158" required>
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i> تفعيل</button>
+        </form>
+        <p style="margin-top: 16px; color: var(--text-muted); font-size: 0.8rem;">للحصول على كود التفعيل، تواصل مع الدعم</p>
+    </div>
+</div>
+{% endblock %}

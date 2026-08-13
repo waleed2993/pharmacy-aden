@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}تسجيل الدخول{% endblock %}
+{% block body %}
+<div class="auth-page">
+    <div class="auth-card fade-in">
+        <div style="font-size: 3rem; margin-bottom: 12px;">💊</div>
+        <h1>نظام إدارة الصيدلية</h1>
+        <p class="subtitle">Pharmacy Hybrid Pro</p>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <form method="POST" action="{{ url_for('login') }}">
+            <div class="form-group">
+                <label>اسم المستخدم</label>
+                <input type="text" name="username" class="form-control" placeholder="admin" required autofocus>
+            </div>
+            <div class="form-group">
+                <label>كلمة المرور</label>
+                <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-sign-in-alt"></i> دخول</button>
+        </form>
+        <p style="margin-top: 16px; color: var(--text-muted); font-size: 0.85rem;">افتراضي: admin / admin123</p>
+    </div>
+</div>
+{% endblock %}

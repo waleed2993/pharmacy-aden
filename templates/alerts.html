@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}التنبيهات - نظام الصيدلية{% endblock %}
+{% block body %}
+<div class="app-layout">
+    {% include "_sidebar.html" %}
+    <div class="main-content">
+        <div class="top-bar">
+            <h1><i class="fas fa-bell"></i> التنبيهات / Alerts</h1>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📉 منخفض المخزون</span>
+                <span class="badge badge-danger">{{ low_stock|length }}</span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>الباركود</th><th>الاسم</th><th>الكمية</th><th>الحد الأدنى</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for m in low_stock %}
+                        <tr>
+                            <td>{{ m.barcode or '-' }}</td>
+                            <td><strong style="color:var(--danger);">{{ m.name }}</strong></td>
+                            <td style="text-align:center; color:var(--danger); font-weight:bold;">{{ m.quantity }}</td>
+                            <td style="text-align:center;">{{ m.min_limit }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" style="text-align:center; color: var(--text-muted);">لا يوجد تنبيهات مخزون</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">⏳ قارب على الانتهاء (30 يوم)</span>
+                <span class="badge badge-warning">{{ near_expiry|length }}</span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>الباركود</th><th>الاسم</th><th>تاريخ الانتهاء</th><th>الأيام المتبقية</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for m in near_expiry %}
+                        <tr>
+                            <td>{{ m.barcode or '-' }}</td>
+                            <td><strong style="color:var(--warning);">{{ m.name }}</strong></td>
+                            <td style="text-align:center;">{{ m.expiry_date }}</td>
+                            <td style="text-align:center; color:var(--warning); font-weight:bold;">{{ m.days_left }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" style="text-align:center; color: var(--text-muted);">لا يوجد أدوية قاربة على الانتهاء</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">🔴 منتهي الصلاحية</span>
+                <span class="badge badge-danger">{{ expired|length }}</span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>الباركود</th><th>الاسم</th><th>تاريخ الانتهاء</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for m in expired %}
+                        <tr>
+                            <td>{{ m.barcode or '-' }}</td>
+                            <td><strong style="color:var(--danger);">{{ m.name }}</strong></td>
+                            <td style="text-align:center; color:var(--danger); font-weight:bold;">{{ m.expiry_date }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" style="text-align:center; color: var(--text-muted);">لا يوجد أدوية منتهية</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
